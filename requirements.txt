@@ -1,0 +1,7 @@
+streamlit
+cx_Oracle
+pandas
+numpy
+python-dotenv
+seaborn
+matplotlib 
