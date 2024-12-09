@@ -188,6 +188,22 @@ def criar_tabela_cobertura(df):
         # Adicionar total por linha
         tabela_final['Total Geral'] = tabela_final.sum(axis=1)
         
+        # Adicionar total por coluna
+        total_colunas = tabela_final.sum().to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Novos Clientes'])
+        for coluna in tabela_final.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                # Pegar apenas os valores onde o mês da coluna coincide com o mês da safra
+                valores_iniciais[coluna] = tabela_final[coluna][tabela_final.index == coluna].fillna(0).sum()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_final, total_colunas, valores_iniciais])
+        
         # Formatar tabela
         tabela_final = tabela_final.fillna(0).astype(int)
         
@@ -195,6 +211,112 @@ def criar_tabela_cobertura(df):
         
     except Exception as e:
         st.error(f"Erro ao criar tabela de cobertura: {e}")
+        return None
+
+def criar_tabela_faturamento(df):
+    """
+    Função para criar a tabela de faturamento de vendas
+    """
+    try:
+        # Criar cópia do DataFrame
+        df_faturamento = df.copy()
+        
+        # Converter DATAMOVIMENTO para datetime
+        df_faturamento['DATAMOVIMENTO'] = pd.to_datetime(df_faturamento['DATAMOVIMENTO'])
+        
+        # Criar colunas de ano-mês para safra e movimento
+        df_faturamento['SAFRA'] = df_faturamento.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
+        df_faturamento['MOVIMENTO'] = df_faturamento['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        
+        # Agrupar e somar faturamento
+        tabela_faturamento = df_faturamento.groupby(['SAFRA', 'MOVIMENTO'])['FATURAMENTO'].sum().reset_index()
+        
+        # Criar tabela pivotada
+        tabela_final = tabela_faturamento.pivot(index='SAFRA', 
+                                              columns='MOVIMENTO', 
+                                              values='FATURAMENTO')
+        
+        # Adicionar total por linha
+        tabela_final['Total Geral'] = tabela_final.sum(axis=1)
+        
+        # Adicionar total por coluna
+        total_colunas = tabela_final.sum().to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Faturamento Inicial'])
+        for coluna in tabela_final.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                # Pegar apenas os valores onde o mês da coluna coincide com o mês da safra
+                valores_iniciais[coluna] = tabela_final[coluna][tabela_final.index == coluna].fillna(0).sum()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_final, total_colunas, valores_iniciais])
+        
+        # Formatar tabela
+        tabela_final = tabela_final.fillna(0).round(2)
+        
+        return tabela_final
+        
+    except Exception as e:
+        st.error(f"Erro ao criar tabela de faturamento: {e}")
+        return None
+
+def criar_tabela_margem(df):
+    """
+    Função para criar a tabela de margem de vendas (Faturamento - CustoTotal)
+    """
+    try:
+        # Criar cópia do DataFrame
+        df_margem = df.copy()
+        
+        # Converter DATAMOVIMENTO para datetime
+        df_margem['DATAMOVIMENTO'] = pd.to_datetime(df_margem['DATAMOVIMENTO'])
+        
+        # Calcular o custo total e a margem
+        df_margem['CUSTOTOTAL'] = df_margem['CUSTO'] * df_margem['QUANTIDADE']
+        df_margem['MARGEM'] = df_margem['FATURAMENTO'] - df_margem['CUSTOTOTAL']
+        
+        # Criar colunas de ano-mês para safra e movimento
+        df_margem['SAFRA'] = df_margem.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
+        df_margem['MOVIMENTO'] = df_margem['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        
+        # Agrupar e somar margem
+        tabela_margem = df_margem.groupby(['SAFRA', 'MOVIMENTO'])['MARGEM'].sum().reset_index()
+        
+        # Criar tabela pivotada
+        tabela_final = tabela_margem.pivot(index='SAFRA', 
+                                         columns='MOVIMENTO', 
+                                         values='MARGEM')
+        
+        # Adicionar total por linha
+        tabela_final['Total Geral'] = tabela_final.sum(axis=1)
+        
+        # Adicionar total por coluna
+        total_colunas = tabela_final.sum().to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Margem Inicial'])
+        for coluna in tabela_final.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                # Pegar apenas os valores onde o mês da coluna coincide com o mês da safra
+                valores_iniciais[coluna] = tabela_final[coluna][tabela_final.index == coluna].fillna(0).sum()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_final, total_colunas, valores_iniciais])
+        
+        # Formatar tabela
+        tabela_final = tabela_final.fillna(0).round(2)
+        
+        return tabela_final
+        
+    except Exception as e:
+        st.error(f"Erro ao criar tabela de margem: {e}")
         return None
 
 # Carregar dados uma única vez
@@ -319,43 +441,73 @@ elif pagina == "Página 1":
                 st.pyplot(fig, use_container_width=True)
             
 elif pagina == "Página 2":
-    st.write("## Tabela de Cobertura de Vendas")
+    st.write("## Análise de Vendas")
     
     if df is not None:
-        # Criar tabela de cobertura com dados filtrados
-        tabela_cobertura = criar_tabela_cobertura(df_filtrado)
+        # Adicionar informações dos filtros aplicados
+        if filial_selecionada != 'Todas' or cluster_selecionado != 'Todos':
+            st.write("### Filtros Aplicados:")
+            if filial_selecionada != 'Todas':
+                st.write(f"- Filial: {filial_selecionada}")
+            if cluster_selecionado != 'Todos':
+                st.write(f"- Cluster: {cluster_selecionado}")
         
-        if tabela_cobertura is not None:
-            # Adicionar informações dos filtros aplicados
-            if filial_selecionada != 'Todas' or cluster_selecionado != 'Todos':
-                st.write("### Filtros Aplicados:")
-                if filial_selecionada != 'Todas':
-                    st.write(f"- Filial: {filial_selecionada}")
-                if cluster_selecionado != 'Todos':
-                    st.write(f"- Cluster: {cluster_selecionado}")
+        # Criar tabs para as diferentes visualizações
+        tab1, tab2, tab3 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem"])
+        
+        with tab1:
+            st.write("### Tabela de Cobertura de Clientes")
+            tabela_cobertura = criar_tabela_cobertura(df_filtrado)
             
-            # Exibir a tabela
-            st.dataframe(
-                tabela_cobertura,
-                use_container_width=True,
-                height=400
-            )
+            if tabela_cobertura is not None:
+                st.dataframe(
+                    tabela_cobertura,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown("""
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os números representam a quantidade de clientes únicos
+                - A coluna 'Total Geral' mostra o total de clientes por safra
+                """)
+        
+        with tab2:
+            st.write("### Tabela de Faturamento")
+            tabela_faturamento = criar_tabela_faturamento(df_filtrado)
             
-            # Adicionar explicação
-            st.markdown("""
-            **Como interpretar a tabela:**
-            - As linhas mostram o mês de primeira compra (safra) dos clientes
-            - As colunas mostram os meses subsequentes de compra
-            - Os números representam a quantidade de clientes únicos
-            - A coluna 'Total Geral' mostra o total de clientes por safra
-            """)
+            if tabela_faturamento is not None:
+                st.dataframe(
+                    tabela_faturamento.style.format("R$ {:,.2f}"),
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown("""
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os valores representam o faturamento total
+                - A coluna 'Total Geral' mostra o faturamento total por safra
+                """)
+        
+        with tab3:
+            st.write("### Tabela de Margem")
+            tabela_margem = criar_tabela_margem(df_filtrado)
             
-            # Calcular e mostrar algumas métricas
-            if len(tabela_cobertura) > 0:
-                st.write("### Métricas Gerais")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total de Safras", len(tabela_cobertura))
-                with col2:
-                    st.metric("Média de Clientes por Safra", 
-                             int(tabela_cobertura['Total Geral'].mean()))
+            if tabela_margem is not None:
+                st.dataframe(
+                    tabela_margem.style.format("R$ {:,.2f}"),
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown("""
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os valores representam a margem (Faturamento - Custo)
+                - A coluna 'Total Geral' mostra a margem total por safra
+                """)
