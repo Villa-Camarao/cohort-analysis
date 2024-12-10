@@ -1,6 +1,5 @@
 import streamlit as st
-from st_files_connection import FilesConnection
-#import cx_Oracle
+import cx_Oracle
 import os
 from dotenv import load_dotenv
 import pandas as pd
@@ -16,28 +15,30 @@ load_dotenv()
 @st.cache_data(ttl=timedelta(hours=12))
 def carregar_dados():
     try:
-        # Configurar variáveis de ambiente AWS antes de criar a conexão
-        os.environ['AWS_ACCESS_KEY_ID'] = st.secrets["aws"]["aws_access_key_id"]
-        os.environ['AWS_SECRET_ACCESS_KEY'] = st.secrets["aws"]["aws_secret_access_key"]
+        dsn = cx_Oracle.makedsn(os.getenv("DB_HOST"), os.getenv("DB_PORT"), service_name=os.getenv("DB_SERVICE"))
+        connection = cx_Oracle.connect(user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"), dsn=dsn)
         
-        # Estabelecer conexão com S3
-        conn = st.connection('s3', type=FilesConnection)
+        # Executar a consulta
+        cursor = connection.cursor()
+        cursor.execute(os.getenv("SQL_QUERY"))
         
-        # Carregar dados do CSV
-        df = conn.read(
-            "etl-streamlit-out/base_cohort-analysis.csv",  # ajustei para seu bucket/arquivo
-            input_format="csv", 
-            ttl=600
-        )
+        # Obter nomes das colunas
+        colunas = [desc[0].upper() for desc in cursor.description]
         
-        # Validar se o DataFrame foi carregado corretamente
-        if df is None or df.empty:
-            raise Exception("Nenhum dado foi carregado do arquivo CSV")
-            
+        # Converter resultados para DataFrame
+        resultados = cursor.fetchall()
+        df = pd.DataFrame(resultados, columns=colunas)
+        
+        cursor.close()
+        connection.close()
+        
         return df
-        
+    
+    except cx_Oracle.DatabaseError as e:
+        st.error(f"Erro ao conectar ao banco de dados: {e}")
+        return None
     except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        st.error(f"Erro ao processar os dados: {e}")
         return None
 
 # Função para criar análise de coorte (mantém igual)

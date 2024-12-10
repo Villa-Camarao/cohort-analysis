@@ -18,3 +18,6 @@ __pycache__/
 # Sistema operacional
 .DS_Store
 Thumbs.db 
+
+# Streamlit
+.streamlit/
