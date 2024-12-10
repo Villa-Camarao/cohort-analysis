@@ -330,8 +330,8 @@ if df is not None:
     df = df.reset_index(drop=True)
 
 # Título da aplicação
-st.title("Minha Aplicação Streamlit")
-st.subheader("Bem-vindo à minha aplicação!")
+st.title("Análise Coorte e Retenção")
+st.subheader("Villa Camarão!")
 
 # Sidebar com filtros
 st.sidebar.header("Filtros")
@@ -371,6 +371,20 @@ if df is not None:
         clusters_disponiveis
     )
     
+    # Filtro de Rede
+    redes_disponiveis = ['Todas'] + sorted([str(x) for x in df['REDE'].unique() if pd.notna(x)])
+    rede_selecionada = st.sidebar.selectbox(
+        'Selecione a Rede:',
+        redes_disponiveis
+    )
+    
+    # Filtro de Cliente
+    clientes_disponiveis = ['Todos'] + sorted([str(x) for x in df['CLIENTE'].unique() if pd.notna(x)])
+    cliente_selecionado = st.sidebar.selectbox(
+        'Selecione o Cliente:',
+        clientes_disponiveis
+    )
+    
     # Aplicar filtros
     df_filtrado = df.copy()
     
@@ -382,6 +396,12 @@ if df is not None:
     
     if cluster_selecionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['NOME_CLUSTER'].astype(str) == cluster_selecionado]
+    
+    if rede_selecionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['REDE'].astype(str) == rede_selecionada]
+    
+    if cliente_selecionado != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['CLIENTE'].astype(str) == cliente_selecionado]
     
     # Mostrar contagem de registros após filtros
     st.sidebar.markdown("---")
