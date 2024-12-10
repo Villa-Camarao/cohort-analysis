@@ -16,19 +16,21 @@ load_dotenv()
 @st.cache_data(ttl=timedelta(hours=12))
 def carregar_dados():
     try:
-        # Configurar variáveis de ambiente AWS antes de criar a conexão
-        os.environ['AWS_ACCESS_KEY_ID'] = st.secrets["aws"]["aws_access_key_id"]
-        os.environ['AWS_SECRET_ACCESS_KEY'] = st.secrets["aws"]["aws_secret_access_key"]
+        import boto3
+        import io
         
-        # Estabelecer conexão com S3
-        conn = st.connection('s3', type=FilesConnection)
+        # Criar cliente S3 (vai usar as variáveis de ambiente AWS_* automaticamente)
+        s3_client = boto3.client('s3')
         
-        # Carregar dados do CSV
-        df = conn.read(
-            "etl-streamlit-out/base_cohort-analysis.csv",  # ajustei para seu bucket/arquivo
-            input_format="csv", 
-            ttl=600
-        )
+        # Definir bucket e arquivo
+        bucket = 'datalake-out-etl'
+        file_key = 'base-cohort-analysis/base-cohort-analysis.csv'
+        
+        # Baixar arquivo do S3
+        obj = s3_client.get_object(Bucket=bucket, Key=file_key)
+        
+        # Ler CSV para DataFrame
+        df = pd.read_csv(io.BytesIO(obj['Body'].read()))
         
         # Validar se o DataFrame foi carregado corretamente
         if df is None or df.empty:
@@ -50,23 +52,23 @@ def criar_cohort_analysis(df, modo='Normal'):
         df_cohort = df.copy()
         
         # Converter DATAMOVIMENTO para datetime
-        df_cohort['DATAMOVIMENTO'] = pd.to_datetime(df_cohort['DATAMOVIMENTO'])
+        df_cohort['datamovimento'] = pd.to_datetime(df_cohort['datamovimento'])
         
         if modo == 'Normal':
             # Modo normal - primeira compra define a safra
-            df_cohort['COHORT_MES'] = df_cohort.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
+            df_cohort['COHORT_MES'] = df_cohort.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
             
         else:
             # Modo ajustado - identifica quebras na sequência de compras
             # Ordenar dados por cliente e data
-            df_cohort = df_cohort.sort_values(['CODIGOCLIENTE', 'DATAMOVIMENTO'])
+            df_cohort = df_cohort.sort_values(['codigocliente', 'datamovimento'])
             
             # Criar coluna de mês-ano para cada transação
-            df_cohort['MES_ANO'] = df_cohort['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+            df_cohort['MES_ANO'] = df_cohort['datamovimento'].dt.strftime('%Y-%m')
             
             # Identificar meses consecutivos
-            df_cohort['MES_ANTERIOR'] = df_cohort.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].shift()
-            df_cohort['MESES_DIFF'] = (df_cohort['DATAMOVIMENTO'].dt.year * 12 + df_cohort['DATAMOVIMENTO'].dt.month) - \
+            df_cohort['MES_ANTERIOR'] = df_cohort.groupby('codigocliente')['datamovimento'].shift()
+            df_cohort['MESES_DIFF'] = (df_cohort['datamovimento'].dt.year * 12 + df_cohort['datamovimento'].dt.month) - \
                                     (df_cohort['MES_ANTERIOR'].dt.year * 12 + df_cohort['MES_ANTERIOR'].dt.month)
             
             # Identificar nova safra quando há quebra na sequência (diferença > 1 mês)
@@ -74,13 +76,13 @@ def criar_cohort_analysis(df, modo='Normal'):
                                      (df_cohort['MES_ANTERIOR'].isna())
             
             # Criar identificador de grupo de safra
-            df_cohort['GRUPO_SAFRA'] = df_cohort.groupby('CODIGOCLIENTE')['NOVA_SAFRA'].cumsum()
+            df_cohort['GRUPO_SAFRA'] = df_cohort.groupby('codigocliente')['NOVA_SAFRA'].cumsum()
             
             # Definir mês de safra como primeiro mês de cada grupo
-            df_cohort['COHORT_MES'] = df_cohort.groupby(['CODIGOCLIENTE', 'GRUPO_SAFRA'])['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
+            df_cohort['COHORT_MES'] = df_cohort.groupby(['codigocliente', 'GRUPO_SAFRA'])['datamovimento'].transform('min').dt.strftime('%Y-%m')
         
         # Criar mês da transação
-        df_cohort['MES_TRANSACAO'] = df_cohort['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        df_cohort['MES_TRANSACAO'] = df_cohort['datamovimento'].dt.strftime('%Y-%m')
         
         # Converter para datetime para cálculo correto do período
         df_cohort['COHORT_MES'] = pd.to_datetime(df_cohort['COHORT_MES'])
@@ -91,13 +93,13 @@ def criar_cohort_analysis(df, modo='Normal'):
                                     (df_cohort['MES_TRANSACAO'].dt.month - df_cohort['COHORT_MES'].dt.month))
         
         # Criar matriz de coorte
-        cohort_data = df_cohort.groupby(['COHORT_MES', 'PERIODO_INDEX'])['CODIGOCLIENTE'].nunique().reset_index()
+        cohort_data = df_cohort.groupby(['COHORT_MES', 'PERIODO_INDEX'])['codigocliente'].nunique().reset_index()
         cohort_data['COHORT_MES'] = cohort_data['COHORT_MES'].dt.strftime('%Y-%m')
         
         # Criar matriz pivotada
         cohort_matrix = cohort_data.pivot(index='COHORT_MES',
                                         columns='PERIODO_INDEX',
-                                        values='CODIGOCLIENTE')
+                                        values='codigocliente')
         
         # Calcular taxas de retenção
         retention_matrix = cohort_matrix.divide(cohort_matrix[0], axis=0) * 100
@@ -170,19 +172,19 @@ def criar_tabela_cobertura(df):
         df_cobertura = df.copy()
         
         # Converter DATAMOVIMENTO para datetime
-        df_cobertura['DATAMOVIMENTO'] = pd.to_datetime(df_cobertura['DATAMOVIMENTO'])
+        df_cobertura['datamovimento'] = pd.to_datetime(df_cobertura['datamovimento'])
         
         # Criar colunas de ano-mês para safra e movimento
-        df_cobertura['SAFRA'] = df_cobertura.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
-        df_cobertura['MOVIMENTO'] = df_cobertura['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        df_cobertura['SAFRA'] = df_cobertura.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_cobertura['MOVIMENTO'] = df_cobertura['datamovimento'].dt.strftime('%Y-%m')
         
         # Agrupar e contar clientes únicos
-        tabela_cobertura = df_cobertura.groupby(['SAFRA', 'MOVIMENTO'])['CODIGOCLIENTE'].nunique().reset_index()
+        tabela_cobertura = df_cobertura.groupby(['SAFRA', 'MOVIMENTO'])['codigocliente'].nunique().reset_index()
         
         # Criar tabela pivotada
         tabela_final = tabela_cobertura.pivot(index='SAFRA', 
                                             columns='MOVIMENTO', 
-                                            values='CODIGOCLIENTE')
+                                            values='codigocliente')
         
         # Adicionar total por linha
         tabela_final['Total Geral'] = tabela_final.sum(axis=1)
@@ -221,19 +223,19 @@ def criar_tabela_faturamento(df):
         df_faturamento = df.copy()
         
         # Converter DATAMOVIMENTO para datetime
-        df_faturamento['DATAMOVIMENTO'] = pd.to_datetime(df_faturamento['DATAMOVIMENTO'])
+        df_faturamento['datamovimento'] = pd.to_datetime(df_faturamento['datamovimento'])
         
         # Criar colunas de ano-mês para safra e movimento
-        df_faturamento['SAFRA'] = df_faturamento.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
-        df_faturamento['MOVIMENTO'] = df_faturamento['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        df_faturamento['SAFRA'] = df_faturamento.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_faturamento['MOVIMENTO'] = df_faturamento['datamovimento'].dt.strftime('%Y-%m')
         
         # Agrupar e somar faturamento
-        tabela_faturamento = df_faturamento.groupby(['SAFRA', 'MOVIMENTO'])['FATURAMENTO'].sum().reset_index()
+        tabela_faturamento = df_faturamento.groupby(['SAFRA', 'MOVIMENTO'])['faturamento'].sum().reset_index()
         
         # Criar tabela pivotada
         tabela_final = tabela_faturamento.pivot(index='SAFRA', 
                                               columns='MOVIMENTO', 
-                                              values='FATURAMENTO')
+                                              values='faturamento')
         
         # Adicionar total por linha
         tabela_final['Total Geral'] = tabela_final.sum(axis=1)
@@ -272,15 +274,15 @@ def criar_tabela_margem(df):
         df_margem = df.copy()
         
         # Converter DATAMOVIMENTO para datetime
-        df_margem['DATAMOVIMENTO'] = pd.to_datetime(df_margem['DATAMOVIMENTO'])
+        df_margem['datamovimento'] = pd.to_datetime(df_margem['datamovimento'])
         
         # Calcular o custo total e a margem
-        df_margem['CUSTOTOTAL'] = df_margem['CUSTO'] * df_margem['QUANTIDADE']
-        df_margem['MARGEM'] = df_margem['FATURAMENTO'] - df_margem['CUSTOTOTAL']
+        df_margem['CUSTOTOTAL'] = df_margem['custo'] * df_margem['quantidade']
+        df_margem['MARGEM'] = df_margem['faturamento'] - df_margem['CUSTOTOTAL']
         
         # Criar colunas de ano-mês para safra e movimento
-        df_margem['SAFRA'] = df_margem.groupby('CODIGOCLIENTE')['DATAMOVIMENTO'].transform('min').dt.strftime('%Y-%m')
-        df_margem['MOVIMENTO'] = df_margem['DATAMOVIMENTO'].dt.strftime('%Y-%m')
+        df_margem['SAFRA'] = df_margem.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_margem['MOVIMENTO'] = df_margem['datamovimento'].dt.strftime('%Y-%m')
         
         # Agrupar e somar margem
         tabela_margem = df_margem.groupby(['SAFRA', 'MOVIMENTO'])['MARGEM'].sum().reset_index()
@@ -323,7 +325,7 @@ df = carregar_dados()
 
 # Remover filiais 1 e 5 do DataFrame
 if df is not None:
-    df = df[~df['CODIGOFILIAL'].astype(str).isin(['1', '5', '2'])]
+    df = df[~df['codigofilial'].astype(str).isin(['1', '5', '2'])]
     
     # Resetar o índice após a remoção
     df = df.reset_index(drop=True)
@@ -338,11 +340,11 @@ st.sidebar.header("Filtros")
 # Inicializar filtros apenas se df não for None
 if df is not None:
     # Converter DATAMOVIMENTO para datetime se ainda não estiver
-    df['DATAMOVIMENTO'] = pd.to_datetime(df['DATAMOVIMENTO'])
+    df['datamovimento'] = pd.to_datetime(df['datamovimento'])
     
     # Obter data mínima e máxima do DataFrame
-    data_min = df['DATAMOVIMENTO'].min()
-    data_max = df['DATAMOVIMENTO'].max()
+    data_min = df['datamovimento'].min()
+    data_max = df['datamovimento'].max()
     
     # Filtro de Data
     st.sidebar.subheader("Filtro de Período")
@@ -357,28 +359,28 @@ if df is not None:
     data_filtro = pd.to_datetime(data_selecionada)
     
     # Filtro de Filial
-    filiais_disponiveis = ['Todas'] + sorted([str(x) for x in df['CODIGOFILIAL'].unique() if pd.notna(x)])
+    filiais_disponiveis = ['Todas'] + sorted([str(x) for x in df['codigofilial'].unique() if pd.notna(x)])
     filial_selecionada = st.sidebar.selectbox(
         'Selecione a Filial:',
         filiais_disponiveis
     )
     
     # Filtro de Cluster
-    clusters_disponiveis = ['Todos'] + sorted([str(x) for x in df['NOME_CLUSTER'].unique() if pd.notna(x)])
+    clusters_disponiveis = ['Todos'] + sorted([str(x) for x in df['nome_cluster'].unique() if pd.notna(x)])
     cluster_selecionado = st.sidebar.selectbox(
         'Selecione o Cluster:',
         clusters_disponiveis
     )
     
     # Filtro de Rede
-    redes_disponiveis = ['Todas'] + sorted([str(x) for x in df['REDE'].unique() if pd.notna(x)])
+    redes_disponiveis = ['Todas'] + sorted([str(x) for x in df['rede'].unique() if pd.notna(x)])
     rede_selecionada = st.sidebar.selectbox(
         'Selecione a Rede:',
         redes_disponiveis
     )
     
     # Filtro de Cliente
-    clientes_disponiveis = ['Todos'] + sorted([str(x) for x in df['CLIENTE'].unique() if pd.notna(x)])
+    clientes_disponiveis = ['Todos'] + sorted([str(x) for x in df['cliente'].unique() if pd.notna(x)])
     cliente_selecionado = st.sidebar.selectbox(
         'Selecione o Cliente:',
         clientes_disponiveis
@@ -388,19 +390,19 @@ if df is not None:
     df_filtrado = df.copy()
     
     # Aplicar filtro de data (maior ou igual à data selecionada)
-    df_filtrado = df_filtrado[df_filtrado['DATAMOVIMENTO'] >= data_filtro]
+    df_filtrado = df_filtrado[df_filtrado['datamovimento'] >= data_filtro]
     
     if filial_selecionada != 'Todas':
-        df_filtrado = df_filtrado[df_filtrado['CODIGOFILIAL'].astype(str) == filial_selecionada]
+        df_filtrado = df_filtrado[df_filtrado['codigofilial'].astype(str) == filial_selecionada]
     
     if cluster_selecionado != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['NOME_CLUSTER'].astype(str) == cluster_selecionado]
+        df_filtrado = df_filtrado[df_filtrado['nome_cluester'].astype(str) == cluster_selecionado]
     
     if rede_selecionada != 'Todas':
-        df_filtrado = df_filtrado[df_filtrado['REDE'].astype(str) == rede_selecionada]
+        df_filtrado = df_filtrado[df_filtrado['rede'].astype(str) == rede_selecionada]
     
     if cliente_selecionado != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['CLIENTE'].astype(str) == cliente_selecionado]
+        df_filtrado = df_filtrado[df_filtrado['cliente'].astype(str) == cliente_selecionado]
     
     # Mostrar contagem de registros após filtros
     st.sidebar.markdown("---")
@@ -410,12 +412,12 @@ if df is not None:
     # Verificar se existem dados após os filtros
     if len(df_filtrado) > 0:
         st.sidebar.write(f"Período dos dados filtrados:")
-        st.sidebar.write(f"De: {df_filtrado['DATAMOVIMENTO'].min().strftime('%d/%m/%Y')}")
-        st.sidebar.write(f"Até: {df_filtrado['DATAMOVIMENTO'].max().strftime('%d/%m/%Y')}")
+        st.sidebar.write(f"De: {df_filtrado['datamovimento'].min().strftime('%d/%m/%Y')}")
+        st.sidebar.write(f"Até: {df_filtrado['datamovimento'].max().strftime('%d/%m/%Y')}")
         
         # Mostrar quantidade de meses no período
-        meses_periodo = (df_filtrado['DATAMOVIMENTO'].max().year - df_filtrado['DATAMOVIMENTO'].min().year) * 12 + \
-                       df_filtrado['DATAMOVIMENTO'].max().month - df_filtrado['DATAMOVIMENTO'].min().month + 1
+        meses_periodo = (df_filtrado['datamovimento'].max().year - df_filtrado['datamovimento'].min().year) * 12 + \
+                       df_filtrado['datamovimento'].max().month - df_filtrado['datamovimento'].min().month + 1
         st.sidebar.write(f"Total de meses: {meses_periodo}")
     else:
         st.sidebar.warning("Nenhum dado encontrado para os filtros selecionados.")
@@ -432,7 +434,17 @@ modo_coorte = st.sidebar.radio(
 pagina = st.sidebar.selectbox("Escolha uma página:", ["Página Inicial", "Página 1", "Página 2"])
 
 if pagina == "Página Inicial":
-    st.write("Esta é a página inicial.")
+    st.write("## Visualização dos Dados")
+    
+    if df is not None:
+        # Mostrar as primeiras linhas do DataFrame
+        st.write("### Primeiras linhas do DataFrame:")
+        st.dataframe(df.head(10))
+        
+        # Mostrar informações básicas sobre o DataFrame
+        st.write("### Informações do DataFrame:")
+        st.write(f"Total de registros: {len(df):,}")
+        st.write(f"Total de colunas: {len(df.columns)}")
     
 elif pagina == "Página 1":
     st.write("Bem-vindo à Página 1!")
