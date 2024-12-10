@@ -396,7 +396,7 @@ if df is not None:
         df_filtrado = df_filtrado[df_filtrado['codigofilial'].astype(str) == filial_selecionada]
     
     if cluster_selecionado != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['nome_cluester'].astype(str) == cluster_selecionado]
+        df_filtrado = df_filtrado[df_filtrado['nome_cluster'].astype(str) == cluster_selecionado]
     
     if rede_selecionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['rede'].astype(str) == rede_selecionada]
