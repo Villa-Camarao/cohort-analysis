@@ -7,3 +7,5 @@ seaborn
 matplotlib 
 s3fs
 st-files-connection
+boto3
+io
