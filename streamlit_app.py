@@ -8,19 +8,20 @@ import numpy as np
 from datetime import timedelta
 import seaborn as sns
 import matplotlib.pyplot as plt
+import boto3
+import io
 
-# Carregar variáveis de ambiente do arquivo .env
-load_dotenv()
-
-# Função para carregar dados (mover para o início)
+# Função para carregar dados
 @st.cache_data(ttl=timedelta(hours=12))
 def carregar_dados():
     try:
-        import boto3
-        import io
-        
-        # Criar cliente S3 (vai usar as variáveis de ambiente AWS_* automaticamente)
-        s3_client = boto3.client('s3')
+        # Criar cliente S3 usando as credenciais do arquivo .streamlit/secrets.toml
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=st.secrets["aws"]["aws_access_key_id"],
+            aws_secret_access_key=st.secrets["aws"]["aws_secret_access_key"],
+            region_name=st.secrets["aws"]["aws_default_region"]
+        )
         
         # Definir bucket e arquivo
         bucket = 'datalake-out-etl'
