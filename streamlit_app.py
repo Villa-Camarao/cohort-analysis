@@ -51,34 +51,24 @@ def criar_cohort_analysis(df, modo='Normal'):
         # Criar cópia do DataFrame
         df_cohort = df.copy()
         
-        # Converter DATAMOVIMENTO para datetime
+        # Converter datamovimento para datetime
         df_cohort['datamovimento'] = pd.to_datetime(df_cohort['datamovimento'])
         
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_cohort['datamovimento'].min().replace(day=1)
+        data_final = df_cohort['datamovimento'].max().replace(day=1)
+        
         if modo == 'Normal':
-            # Modo normal - primeira compra define a safra
             df_cohort['COHORT_MES'] = df_cohort.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
-            
         else:
             # Modo ajustado - identifica quebras na sequência de compras
-            # Ordenar dados por cliente e data
             df_cohort = df_cohort.sort_values(['codigocliente', 'datamovimento'])
-            
-            # Criar coluna de mês-ano para cada transação
             df_cohort['MES_ANO'] = df_cohort['datamovimento'].dt.strftime('%Y-%m')
-            
-            # Identificar meses consecutivos
             df_cohort['MES_ANTERIOR'] = df_cohort.groupby('codigocliente')['datamovimento'].shift()
             df_cohort['MESES_DIFF'] = (df_cohort['datamovimento'].dt.year * 12 + df_cohort['datamovimento'].dt.month) - \
                                     (df_cohort['MES_ANTERIOR'].dt.year * 12 + df_cohort['MES_ANTERIOR'].dt.month)
-            
-            # Identificar nova safra quando há quebra na sequência (diferença > 1 mês)
-            df_cohort['NOVA_SAFRA'] = (df_cohort['MESES_DIFF'] > 1) | \
-                                     (df_cohort['MES_ANTERIOR'].isna())
-            
-            # Criar identificador de grupo de safra
+            df_cohort['NOVA_SAFRA'] = (df_cohort['MESES_DIFF'] > 1) | (df_cohort['MES_ANTERIOR'].isna())
             df_cohort['GRUPO_SAFRA'] = df_cohort.groupby('codigocliente')['NOVA_SAFRA'].cumsum()
-            
-            # Definir mês de safra como primeiro mês de cada grupo
             df_cohort['COHORT_MES'] = df_cohort.groupby(['codigocliente', 'GRUPO_SAFRA'])['datamovimento'].transform('min').dt.strftime('%Y-%m')
         
         # Criar mês da transação
@@ -94,6 +84,26 @@ def criar_cohort_analysis(df, modo='Normal'):
         
         # Criar matriz de coorte
         cohort_data = df_cohort.groupby(['COHORT_MES', 'PERIODO_INDEX'])['codigocliente'].nunique().reset_index()
+        
+        # Criar todas as combinações possíveis de safras e períodos
+        cohort_meses = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        max_periodo = ((data_final.year - data_inicial.year) * 12 + 
+                      data_final.month - data_inicial.month)
+        
+        todas_combinacoes = pd.DataFrame([(cohort, periodo) 
+                                        for cohort in cohort_meses 
+                                        for periodo in range(int(max_periodo) + 1)],
+                                       columns=['COHORT_MES', 'PERIODO_INDEX'])
+        
+        # Fazer merge com os dados reais
+        cohort_data = todas_combinacoes.merge(cohort_data, 
+                                            on=['COHORT_MES', 'PERIODO_INDEX'], 
+                                            how='left')
+        
+        # Preencher valores nulos com 0
+        cohort_data['codigocliente'] = cohort_data['codigocliente'].fillna(0)
+        
+        # Converter COHORT_MES para string no formato adequado
         cohort_data['COHORT_MES'] = cohort_data['COHORT_MES'].dt.strftime('%Y-%m')
         
         # Criar matriz pivotada
@@ -181,10 +191,29 @@ def criar_tabela_cobertura(df):
         # Agrupar e contar clientes únicos
         tabela_cobertura = df_cobertura.groupby(['SAFRA', 'MOVIMENTO'])['codigocliente'].nunique().reset_index()
         
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_cobertura['datamovimento'].min().replace(day=1)
+        data_final = df_cobertura['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas para safras e movimentos
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        # Criar todas as combinações possíveis
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_cobertura, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
         # Criar tabela pivotada
-        tabela_final = tabela_cobertura.pivot(index='SAFRA', 
-                                            columns='MOVIMENTO', 
-                                            values='codigocliente')
+        tabela_final = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='codigocliente')
         
         # Adicionar total por linha
         tabela_final['Total Geral'] = tabela_final.sum(axis=1)
@@ -222,8 +251,16 @@ def criar_tabela_faturamento(df):
         # Criar cópia do DataFrame
         df_faturamento = df.copy()
         
-        # Converter DATAMOVIMENTO para datetime
+        # Converter datamovimento para datetime
         df_faturamento['datamovimento'] = pd.to_datetime(df_faturamento['datamovimento'])
+        
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_faturamento['datamovimento'].min().replace(day=1)
+        data_final = df_faturamento['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas baseado nos dados
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas = pd.DataFrame({'MOVIMENTO': todas_datas.strftime('%Y-%m')})
         
         # Criar colunas de ano-mês para safra e movimento
         df_faturamento['SAFRA'] = df_faturamento.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
@@ -232,29 +269,48 @@ def criar_tabela_faturamento(df):
         # Agrupar e somar faturamento
         tabela_faturamento = df_faturamento.groupby(['SAFRA', 'MOVIMENTO'])['faturamento'].sum().reset_index()
         
+        # Criar todas as combinações possíveis
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_faturamento, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
+        # Preencher valores nulos com 0
+        tabela_final['faturamento'] = tabela_final['faturamento'].fillna(0)
+        
         # Criar tabela pivotada
-        tabela_final = tabela_faturamento.pivot(index='SAFRA', 
-                                              columns='MOVIMENTO', 
-                                              values='faturamento')
+        tabela_pivot = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='faturamento')
+        
+        # Ordenar as colunas cronologicamente
+        tabela_pivot = tabela_pivot.reindex(sorted(tabela_pivot.columns), axis=1)
         
         # Adicionar total por linha
-        tabela_final['Total Geral'] = tabela_final.sum(axis=1)
+        tabela_pivot['Total Geral'] = tabela_pivot.sum(axis=1)
         
         # Adicionar total por coluna
-        total_colunas = tabela_final.sum().to_frame().T
+        total_colunas = tabela_pivot.sum().to_frame().T
         total_colunas.index = ['Total Geral']
         
         # Criar linha com valores iniciais de cada safra
         valores_iniciais = pd.DataFrame(index=['Faturamento Inicial'])
-        for coluna in tabela_final.columns:
+        for coluna in tabela_pivot.columns:
             if coluna == 'Total Geral':
                 valores_iniciais[coluna] = 0
             else:
-                # Pegar apenas os valores onde o mês da coluna coincide com o mês da safra
-                valores_iniciais[coluna] = tabela_final[coluna][tabela_final.index == coluna].fillna(0).sum()
+                valores_iniciais[coluna] = tabela_pivot[coluna][tabela_pivot.index == coluna].fillna(0).sum()
         
         # Concatenar com a tabela original e totais
-        tabela_final = pd.concat([tabela_final, total_colunas, valores_iniciais])
+        tabela_final = pd.concat([tabela_pivot, total_colunas, valores_iniciais])
         
         # Formatar tabela
         tabela_final = tabela_final.fillna(0).round(2)
@@ -267,49 +323,76 @@ def criar_tabela_faturamento(df):
 
 def criar_tabela_margem(df):
     """
-    Função para criar a tabela de margem de vendas (Faturamento - CustoTotal)
+    Função para criar a tabela de margem de vendas
     """
     try:
         # Criar cópia do DataFrame
         df_margem = df.copy()
         
-        # Converter DATAMOVIMENTO para datetime
+        # Converter datamovimento para datetime
         df_margem['datamovimento'] = pd.to_datetime(df_margem['datamovimento'])
         
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_margem['datamovimento'].min().replace(day=1)
+        data_final = df_margem['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas baseado nos dados
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas = pd.DataFrame({'MOVIMENTO': todas_datas.strftime('%Y-%m')})
+        
         # Calcular o custo total e a margem
-        df_margem['CUSTOTOTAL'] = df_margem['custo'] * df_margem['quantidade']
-        df_margem['MARGEM'] = df_margem['faturamento'] - df_margem['CUSTOTOTAL']
+        df_margem['custototal'] = df_margem['custo'] * df_margem['quantidade']
+        df_margem['margem'] = df_margem['faturamento'] - df_margem['custototal']
         
         # Criar colunas de ano-mês para safra e movimento
         df_margem['SAFRA'] = df_margem.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
         df_margem['MOVIMENTO'] = df_margem['datamovimento'].dt.strftime('%Y-%m')
         
         # Agrupar e somar margem
-        tabela_margem = df_margem.groupby(['SAFRA', 'MOVIMENTO'])['MARGEM'].sum().reset_index()
+        tabela_margem = df_margem.groupby(['SAFRA', 'MOVIMENTO'])['margem'].sum().reset_index()
+        
+        # Criar todas as combinações possíveis
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_margem, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
+        # Preencher valores nulos com 0
+        tabela_final['margem'] = tabela_final['margem'].fillna(0)
         
         # Criar tabela pivotada
-        tabela_final = tabela_margem.pivot(index='SAFRA', 
-                                         columns='MOVIMENTO', 
-                                         values='MARGEM')
+        tabela_pivot = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='margem')
+        
+        # Ordenar as colunas cronologicamente
+        tabela_pivot = tabela_pivot.reindex(sorted(tabela_pivot.columns), axis=1)
         
         # Adicionar total por linha
-        tabela_final['Total Geral'] = tabela_final.sum(axis=1)
+        tabela_pivot['Total Geral'] = tabela_pivot.sum(axis=1)
         
         # Adicionar total por coluna
-        total_colunas = tabela_final.sum().to_frame().T
+        total_colunas = tabela_pivot.sum().to_frame().T
         total_colunas.index = ['Total Geral']
         
         # Criar linha com valores iniciais de cada safra
         valores_iniciais = pd.DataFrame(index=['Margem Inicial'])
-        for coluna in tabela_final.columns:
+        for coluna in tabela_pivot.columns:
             if coluna == 'Total Geral':
                 valores_iniciais[coluna] = 0
             else:
-                # Pegar apenas os valores onde o mês da coluna coincide com o mês da safra
-                valores_iniciais[coluna] = tabela_final[coluna][tabela_final.index == coluna].fillna(0).sum()
+                valores_iniciais[coluna] = tabela_pivot[coluna][tabela_pivot.index == coluna].fillna(0).sum()
         
         # Concatenar com a tabela original e totais
-        tabela_final = pd.concat([tabela_final, total_colunas, valores_iniciais])
+        tabela_final = pd.concat([tabela_pivot, total_colunas, valores_iniciais])
         
         # Formatar tabela
         tabela_final = tabela_final.fillna(0).round(2)
