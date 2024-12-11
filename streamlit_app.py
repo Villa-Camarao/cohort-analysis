@@ -11,6 +11,20 @@ import matplotlib.pyplot as plt
 import boto3
 import io
 
+# Definir imagem de fundo
+st.markdown(
+    """
+    <style>
+    .reportview-container {
+        background: url("https://villacamarao.com.br/wp-content/uploads/2021/05/Prancheta1_3.svg");
+        background-size: cover;
+        background-position: center;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Função para carregar dados
 @st.cache_data(ttl=timedelta(hours=12))
 def carregar_dados():
@@ -494,6 +508,9 @@ if df is not None:
 st.title("Análise Coorte e Retenção")
 st.subheader("Villa Camarão!")
 
+# Adicionar logo
+st.image("https://villacamarao.com.br/wp-content/uploads/2021/05/Prancheta1_3.svg", width=150)
+
 # Sidebar com filtros
 st.sidebar.header("Filtros")
 
@@ -591,23 +608,34 @@ modo_coorte = st.sidebar.radio(
 )
 
 # Navegação entre páginas
-pagina = st.sidebar.selectbox("Escolha uma página:", ["Página Inicial", "Página 1", "Página 2"])
+pagina = st.sidebar.selectbox("Escolha uma página:", ["Página Inicial", "Gráfico de retenção", "Análise Coorte"])
 
 if pagina == "Página Inicial":
     st.write("## Visualização dos Dados")
     
     if df is not None:
         # Mostrar as primeiras linhas do DataFrame
-        st.write("### Primeiras linhas do DataFrame:")
-        st.dataframe(df.head(10))
+        #st.write("### Primeiras linhas do DataFrame:")
+        #st.dataframe(df.head(10))
+        st.markdown("""
+        **Proposta do projeto:**
+        - Entender o comportamento de compra (safra) dos clientes
+        - Os dados são atualizados diariamente
+        - Os dados são divididos em quantidade de clientes, faturamento, margem e número de notas/pedidos
+        - A coluna 'Total Geral' mostra o total por safra
+        - A linha 'Total Geral' mostra o total por mês da venda
+        - A linha 'Total Inicial' mostra o total da primeira venda do mês
+        - Utilize a barra lateral para filtrar os registros e navegar entre as páginas
+        """)
         
         # Mostrar informações básicas sobre o DataFrame
         st.write("### Informações do DataFrame:")
         st.write(f"Total de registros: {len(df):,}")
         st.write(f"Total de colunas: {len(df.columns)}")
+        st.write("Todos os direitos reservados.")
     
-elif pagina == "Página 1":
-    st.write("Bem-vindo à Página 1!")
+elif pagina == "Gráfico de retenção":
+    st.write("Bem-vindo à Página de Gráfico de retenção!")
     
     if df is not None:
         st.success("Dados carregados com sucesso!")
@@ -631,20 +659,20 @@ elif pagina == "Página 1":
             if fig is not None:
                 st.pyplot(fig, use_container_width=True)
             
-elif pagina == "Página 2":
-    st.write("## Análise de Vendas")
+elif pagina == "Análise Coorte":
+    #st.write("## Análise Coorte")
     
     if df is not None:
         # Adicionar informações dos filtros aplicados
         if filial_selecionada != 'Todas' or cluster_selecionado != 'Todos':
-            st.write("### Filtros Aplicados:")
+            st.write("#### Filtros Aplicados:")
             if filial_selecionada != 'Todas':
                 st.write(f"- Filial: {filial_selecionada}")
             if cluster_selecionado != 'Todos':
                 st.write(f"- Cluster: {cluster_selecionado}")
         
         # Criar tabs para as diferentes visualizações
-        tab1, tab2, tab3, tab4 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem", "Notas"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Clientes", "Faturamento", "Margem", "Notas"])
         
         with tab1:
             st.write("### Tabela de Cobertura de Clientes")
