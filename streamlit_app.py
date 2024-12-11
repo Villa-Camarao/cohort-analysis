@@ -404,6 +404,82 @@ def criar_tabela_margem(df):
         st.error(f"Erro ao criar tabela de margem: {e}")
         return None
 
+# Função para criar tabela de notas emitidas
+def criar_tabela_notas(df):
+    """
+    Função para criar a tabela de notas emitidas
+    """
+    try:
+        # Criar cópia do DataFrame
+        df_notas = df.copy()
+        
+        # Converter DATAMOVIMENTO para datetime
+        df_notas['datamovimento'] = pd.to_datetime(df_notas['datamovimento'])
+        
+        # Criar colunas de ano-mês para safra e movimento
+        df_notas['SAFRA'] = df_notas.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_notas['MOVIMENTO'] = df_notas['datamovimento'].dt.strftime('%Y-%m')
+        
+        # Agrupar e somar notas emitidas
+        tabela_notas = df_notas.groupby(['SAFRA', 'MOVIMENTO'])['notasaida'].sum().reset_index()
+        
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_notas['datamovimento'].min().replace(day=1)
+        data_final = df_notas['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas para safras e movimentos
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        # Criar todas as combinações possíveis
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_notas, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
+        # Preencher valores nulos com 0
+        tabela_final['notasaida'] = tabela_final['notasaida'].fillna(0)
+        
+        # Criar tabela pivotada
+        tabela_pivot = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='notasaida')
+        
+        # Ordenar as colunas cronologicamente
+        tabela_pivot = tabela_pivot.reindex(sorted(tabela_pivot.columns), axis=1)
+        
+        # Adicionar total por linha
+        tabela_pivot['Total Geral'] = tabela_pivot.sum(axis=1)
+        
+        # Adicionar total por coluna
+        total_colunas = tabela_pivot.sum().to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Notas Iniciais'])
+        for coluna in tabela_pivot.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                valores_iniciais[coluna] = tabela_pivot[coluna][tabela_pivot.index == coluna].fillna(0).sum()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_pivot, total_colunas, valores_iniciais])
+        
+        # Formatar tabela
+        tabela_final = tabela_final.fillna(0).astype(int)
+        
+        return tabela_final
+        
+    except Exception as e:
+        st.error(f"Erro ao criar tabela de notas: {e}")
+        return None
+
 # Carregar dados uma única vez
 df = carregar_dados()
 
@@ -568,7 +644,7 @@ elif pagina == "Página 2":
                 st.write(f"- Cluster: {cluster_selecionado}")
         
         # Criar tabs para as diferentes visualizações
-        tab1, tab2, tab3 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem", "Notas"])
         
         with tab1:
             st.write("### Tabela de Cobertura de Clientes")
@@ -625,4 +701,23 @@ elif pagina == "Página 2":
                 - As colunas mostram os meses subsequentes de compra
                 - Os valores representam a margem (Faturamento - Custo)
                 - A coluna 'Total Geral' mostra a margem total por safra
+                """)
+
+        with tab4:  # Nova aba para a tabela de notas
+            st.write("### Tabela de Notas Emitidas")
+            tabela_notas = criar_tabela_notas(df_filtrado)
+            
+            if tabela_notas is not None:
+                st.dataframe(
+                    tabela_notas,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown(""" 
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os valores representam a quantidade de notas emitidas
+                - A coluna 'Total Geral' mostra o total de notas emitidas por safra
                 """)
