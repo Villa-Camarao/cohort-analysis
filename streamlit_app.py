@@ -872,7 +872,7 @@ elif pagina == "Análise Coorte":
                 st.write(f"- Cluster: {cluster_selecionado}")
         
         # Criar tabs para as diferentes visualizações
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem", "Margem Percentual", "Notas Emitidas", "Quantidade de Vendas"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem", "Margem Percentual", "Notas Emitidas", "Volume"])
         
         with tab1:
             st.write("### Tabela de Cobertura de Clientes")
