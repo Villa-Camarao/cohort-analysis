@@ -441,8 +441,8 @@ def criar_tabela_notas(df):
         df_notas['SAFRA'] = df_notas.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
         df_notas['MOVIMENTO'] = df_notas['datamovimento'].dt.strftime('%Y-%m')
         
-        # Agrupar e somar notas emitidas
-        tabela_notas = df_notas.groupby(['SAFRA', 'MOVIMENTO'])['notasaida'].sum().reset_index()
+        # Agrupar e contar notas emitidas de forma distinta
+        tabela_notas = df_notas.groupby(['SAFRA', 'MOVIMENTO'])['notasaida'].nunique().reset_index()
         
         # Obter data mínima e máxima do DataFrame
         data_inicial = df_notas['datamovimento'].min().replace(day=1)
@@ -575,6 +575,94 @@ def criar_tabela_quantidade(df):
         
     except Exception as e:
         st.error(f"Erro ao criar tabela de quantidade: {e}")
+        return None
+
+# Função para criar tabela de margem percentual
+def criar_tabela_margem_percentual(df):
+    """
+    Função para criar a tabela de margem percentual
+    """
+    try:
+        # Criar cópia do DataFrame
+        df_margem = df.copy()
+        
+        # Converter DATAMOVIMENTO para datetime
+        df_margem['datamovimento'] = pd.to_datetime(df_margem['datamovimento'])
+        
+        # Criar colunas de ano-mês para safra e movimento
+        df_margem['SAFRA'] = df_margem.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_margem['MOVIMENTO'] = df_margem['datamovimento'].dt.strftime('%Y-%m')
+        
+        # Calcular a margem
+        df_margem['margem'] = df_margem['faturamento'] - df_margem['custo']
+        
+        # Calcular a margem percentual
+        df_margem['margem_percentual'] = (df_margem['margem'] / df_margem['faturamento']) * 100
+        
+        # Agrupar e calcular a soma da margem e do faturamento
+        tabela_margem_percentual = df_margem.groupby(['SAFRA', 'MOVIMENTO']).agg(
+            margem_total=('margem', 'sum'),
+            faturamento_total=('faturamento', 'sum')
+        ).reset_index()
+        
+        # Calcular a margem percentual
+        tabela_margem_percentual['margem_percentual'] = (tabela_margem_percentual['margem_total'] / tabela_margem_percentual['faturamento_total']) * 100
+        
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_margem['datamovimento'].min().replace(day=1)
+        data_final = df_margem['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas para safras e movimentos
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        # Criar todas as combinações possíveis
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_margem_percentual, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
+        # Preencher valores nulos com 0
+        tabela_final['margem_percentual'] = tabela_final['margem_percentual'].fillna(0)
+        
+        # Criar tabela pivotada
+        tabela_pivot = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='margem_percentual')
+        
+        # Ordenar as colunas cronologicamente
+        tabela_pivot = tabela_pivot.reindex(sorted(tabela_pivot.columns), axis=1)
+        
+        # Adicionar total por linha
+        tabela_pivot['Total Geral'] = (tabela_pivot.sum(axis=1) / tabela_final.groupby('SAFRA')['faturamento_total'].sum()).fillna(0) * 100
+        
+        # Adicionar total por coluna
+        total_colunas = (tabela_pivot.sum() / tabela_final.groupby('MOVIMENTO')['faturamento_total'].sum()).to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Margem Inicial'])
+        for coluna in tabela_pivot.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                valores_iniciais[coluna] = tabela_pivot[coluna][tabela_pivot.index == coluna].fillna(0).mean()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_pivot, total_colunas, valores_iniciais])
+        
+        # Formatar tabela
+        tabela_final = tabela_final.fillna(0).round(2)
+        
+        return tabela_final
+        
+    except Exception as e:
+        st.error(f"Erro ao criar tabela de margem percentual: {e}")
         return None
 
 # Carregar dados uma única vez
@@ -784,7 +872,7 @@ elif pagina == "Análise Coorte":
                 st.write(f"- Cluster: {cluster_selecionado}")
         
         # Criar tabs para as diferentes visualizações
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Clientes", "Faturamento", "Margem", "Notas Emitidas", "Volume"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Cobertura de Clientes", "Faturamento", "Margem", "Margem Percentual", "Notas Emitidas", "Quantidade de Vendas"])
         
         with tab1:
             st.write("### Tabela de Cobertura de Clientes")
@@ -843,7 +931,26 @@ elif pagina == "Análise Coorte":
                 - A coluna 'Total Geral' mostra a margem total por safra
                 """)
 
-        with tab4:  # Nova aba para a tabela de notas
+        with tab4:  # Nova aba para a tabela de margem percentual
+            st.write("### Tabela de Margem Percentual")
+            tabela_margem_percentual = criar_tabela_margem_percentual(df_filtrado)
+            
+            if tabela_margem_percentual is not None:
+                st.dataframe(
+                    tabela_margem_percentual,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown(""" 
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os valores representam a margem percentual
+                - A coluna 'Total Geral' mostra a média da margem percentual por safra
+                """)
+
+        with tab5:  # Nova aba para a tabela de notas
             st.write("### Tabela de Notas Emitidas")
             tabela_notas = criar_tabela_notas(df_filtrado)
             
@@ -862,7 +969,7 @@ elif pagina == "Análise Coorte":
                 - A coluna 'Total Geral' mostra o total de notas emitidas por safra
                 """)
 
-        with tab5:  # Nova aba para a tabela de quantidade de vendas
+        with tab6:  # Nova aba para a tabela de quantidade de vendas
             st.write("### Tabela de Volume Vendido")
             tabela_quantidade = criar_tabela_quantidade(df_filtrado)
             
@@ -880,3 +987,4 @@ elif pagina == "Análise Coorte":
                 - Os valores representam a quantidade total de vendas
                 - A coluna 'Total Geral' mostra a quantidade total por safra
                 """)
+
