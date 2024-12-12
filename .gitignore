@@ -22,3 +22,4 @@ Thumbs.db
 # Streamlit
 .streamlit/
 *.toml
+*.sql
