@@ -356,7 +356,7 @@ def criar_tabela_margem(df):
         todas_datas = pd.DataFrame({'MOVIMENTO': todas_datas.strftime('%Y-%m')})
         
         # Calcular o custo total e a margem
-        df_margem['custototal'] = df_margem['custo'] * df_margem['quantidade']
+        df_margem['custototal'] = df_margem['custo'] #* df_margem['quantidade']
         df_margem['margem'] = df_margem['faturamento'] - df_margem['custototal']
         
         # Criar colunas de ano-mês para safra e movimento
