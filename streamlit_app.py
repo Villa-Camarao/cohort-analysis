@@ -501,6 +501,82 @@ def criar_tabela_notas(df):
         st.error(f"Erro ao criar tabela de notas: {e}")
         return None
 
+# Função para criar tabela de quantidade de vendas
+def criar_tabela_quantidade(df):
+    """
+    Função para criar a tabela de quantidade de vendas
+    """
+    try:
+        # Criar cópia do DataFrame
+        df_quantidade = df.copy()
+        
+        # Converter DATAMOVIMENTO para datetime
+        df_quantidade['datamovimento'] = pd.to_datetime(df_quantidade['datamovimento'])
+        
+        # Criar colunas de ano-mês para safra e movimento
+        df_quantidade['SAFRA'] = df_quantidade.groupby('codigocliente')['datamovimento'].transform('min').dt.strftime('%Y-%m')
+        df_quantidade['MOVIMENTO'] = df_quantidade['datamovimento'].dt.strftime('%Y-%m')
+        
+        # Agrupar e somar quantidade
+        tabela_quantidade = df_quantidade.groupby(['SAFRA', 'MOVIMENTO'])['quantidade'].sum().reset_index()
+        
+        # Obter data mínima e máxima do DataFrame
+        data_inicial = df_quantidade['datamovimento'].min().replace(day=1)
+        data_final = df_quantidade['datamovimento'].max().replace(day=1)
+        
+        # Criar range de datas para safras e movimentos
+        todas_datas = pd.date_range(start=data_inicial, end=data_final, freq='MS')
+        todas_datas_str = todas_datas.strftime('%Y-%m')
+        
+        # Criar todas as combinações possíveis
+        todas_combinacoes = pd.DataFrame([(safra, movimento) 
+                                        for safra in todas_datas_str 
+                                        for movimento in todas_datas_str],
+                                       columns=['SAFRA', 'MOVIMENTO'])
+        
+        # Fazer merge com os dados reais
+        tabela_final = todas_combinacoes.merge(tabela_quantidade, 
+                                             on=['SAFRA', 'MOVIMENTO'], 
+                                             how='left')
+        
+        # Preencher valores nulos com 0
+        tabela_final['quantidade'] = tabela_final['quantidade'].fillna(0)
+        
+        # Criar tabela pivotada
+        tabela_pivot = tabela_final.pivot(index='SAFRA', 
+                                        columns='MOVIMENTO', 
+                                        values='quantidade')
+        
+        # Ordenar as colunas cronologicamente
+        tabela_pivot = tabela_pivot.reindex(sorted(tabela_pivot.columns), axis=1)
+        
+        # Adicionar total por linha
+        tabela_pivot['Total Geral'] = tabela_pivot.sum(axis=1)
+        
+        # Adicionar total por coluna
+        total_colunas = tabela_pivot.sum().to_frame().T
+        total_colunas.index = ['Total Geral']
+        
+        # Criar linha com valores iniciais de cada safra
+        valores_iniciais = pd.DataFrame(index=['Quantidade Inicial'])
+        for coluna in tabela_pivot.columns:
+            if coluna == 'Total Geral':
+                valores_iniciais[coluna] = 0
+            else:
+                valores_iniciais[coluna] = tabela_pivot[coluna][tabela_pivot.index == coluna].fillna(0).sum()
+        
+        # Concatenar com a tabela original e totais
+        tabela_final = pd.concat([tabela_pivot, total_colunas, valores_iniciais])
+        
+        # Formatar tabela
+        tabela_final = tabela_final.fillna(0).astype(int)
+        
+        return tabela_final
+        
+    except Exception as e:
+        st.error(f"Erro ao criar tabela de quantidade: {e}")
+        return None
+
 # Carregar dados uma única vez
 df = carregar_dados()
 
@@ -708,7 +784,7 @@ elif pagina == "Análise Coorte":
                 st.write(f"- Cluster: {cluster_selecionado}")
         
         # Criar tabs para as diferentes visualizações
-        tab1, tab2, tab3, tab4 = st.tabs(["Clientes", "Faturamento", "Margem", "Notas"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Clientes", "Faturamento", "Margem", "Notas Emitidas", "Volume"])
         
         with tab1:
             st.write("### Tabela de Cobertura de Clientes")
@@ -784,4 +860,23 @@ elif pagina == "Análise Coorte":
                 - As colunas mostram os meses subsequentes de compra
                 - Os valores representam a quantidade de notas emitidas
                 - A coluna 'Total Geral' mostra o total de notas emitidas por safra
+                """)
+
+        with tab5:  # Nova aba para a tabela de quantidade de vendas
+            st.write("### Tabela de Volume Vendido")
+            tabela_quantidade = criar_tabela_quantidade(df_filtrado)
+            
+            if tabela_quantidade is not None:
+                st.dataframe(
+                    tabela_quantidade,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                st.markdown(""" 
+                **Como interpretar a tabela:**
+                - As linhas mostram o mês de primeira compra (safra) dos clientes
+                - As colunas mostram os meses subsequentes de compra
+                - Os valores representam a quantidade total de vendas
+                - A coluna 'Total Geral' mostra a quantidade total por safra
                 """)
