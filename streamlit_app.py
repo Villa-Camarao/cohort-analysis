@@ -11,6 +11,13 @@ import matplotlib.pyplot as plt
 import boto3
 import io
 
+# Configurar a página
+st.set_page_config(
+    page_title="Análise Coorte e Retenção",  # Título da página
+    page_icon="📊",  # Ícone da página (opcional)
+    layout="wide"  # Ativar o Wide Mode
+)
+
 # Definir imagem de fundo
 st.markdown(
     """
@@ -497,6 +504,12 @@ def criar_tabela_notas(df):
 # Carregar dados uma única vez
 df = carregar_dados()
 
+# Renomear colunas para minúsculas
+# df.columns = df.columns.str.lower()
+
+# Verificar as colunas do DataFrame
+#st.write("Colunas disponíveis no DataFrame:", df.columns.tolist())
+
 # Remover filiais 1 e 5 do DataFrame
 if df is not None:
     df = df[~df['codigofilial'].astype(str).isin(['1', '5', '2'])]
@@ -542,6 +555,20 @@ if df is not None:
         filiais_disponiveis
     )
     
+        # Filtro de Gerente de Carteira
+    gerentes_carteira_disponiveis = ['Todos'] + sorted([str(x) for x in df['gerentecarteira'].unique() if pd.notna(x)])
+    gerente_carteira_selecionado = st.sidebar.selectbox(
+        'Selecione o Gerente de Carteira:',
+        gerentes_carteira_disponiveis
+    )
+    
+    # Filtro de Gerente de Venda
+    gerentes_venda_disponiveis = ['Todos'] + sorted([str(x) for x in df['gerentevenda'].unique() if pd.notna(x)])
+    gerente_venda_selecionado = st.sidebar.selectbox(
+        'Selecione o Gerente de Venda:',
+        gerentes_venda_disponiveis
+    )
+
     # Filtro de Cluster
     clusters_disponiveis = ['Todos'] + sorted([str(x) for x in df['nome_cluster'].unique() if pd.notna(x)])
     cluster_selecionado = st.sidebar.selectbox(
@@ -563,6 +590,7 @@ if df is not None:
         clientes_disponiveis
     )
     
+    
     # Aplicar filtros
     df_filtrado = df.copy()
     
@@ -580,6 +608,14 @@ if df is not None:
     
     if cliente_selecionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['cliente'].astype(str) == cliente_selecionado]
+    
+    # Aplicar filtro de Gerente de Carteira
+    if gerente_carteira_selecionado != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['gerentecarteira'].astype(str) == gerente_carteira_selecionado]
+    
+    # Aplicar filtro de Gerente de Venda
+    if gerente_venda_selecionado != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['gerentevenda'].astype(str) == gerente_venda_selecionado]
     
     # Mostrar contagem de registros após filtros
     st.sidebar.markdown("---")
@@ -615,8 +651,8 @@ if pagina == "Página Inicial":
     
     if df is not None:
         # Mostrar as primeiras linhas do DataFrame
-        #st.write("### Primeiras linhas do DataFrame:")
-        #st.dataframe(df.head(10))
+        # st.write("### Primeiras linhas do DataFrame:")
+        # st.dataframe(df.head(10))
         st.markdown("""
         **Proposta do projeto:**
         - Entender o comportamento de compra (safra) dos clientes
