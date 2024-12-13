@@ -33,7 +33,7 @@ st.markdown(
 )
 
 # Função para carregar dados
-@st.cache_data(ttl=timedelta(hours=12))
+#@st.cache_data(ttl=timedelta(hours=12))
 def carregar_dados():
     try:
         # Criar cliente S3 usando as credenciais do arquivo .streamlit/secrets.toml
