@@ -608,6 +608,9 @@ def criar_tabela_margem_percentual(df):
         # Calcular a margem percentual
         tabela_margem_percentual['margem_percentual'] = (tabela_margem_percentual['margem_total'] / tabela_margem_percentual['faturamento_total']) * 100
         
+        # Formatar os números para usar vírgula como separador decimal
+        tabela_margem_percentual['margem_percentual'] = tabela_margem_percentual['margem_percentual'].apply(lambda x: f"{x:,.2f}".replace('.', ','))
+
         # Obter data mínima e máxima do DataFrame
         data_inicial = df_margem['datamovimento'].min().replace(day=1)
         data_final = df_margem['datamovimento'].max().replace(day=1)
