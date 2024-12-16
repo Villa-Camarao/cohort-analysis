@@ -672,7 +672,7 @@ def criar_tabela_margem_percentual(df):
 df = carregar_dados()
 
 # Renomear colunas para minúsculas
-# df.columns = df.columns.str.lower()
+df.columns = df.columns.str.lower()
 
 # Verificar as colunas do DataFrame
 #st.write("Colunas disponíveis no DataFrame:", df.columns.tolist())
