@@ -10,6 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import boto3
 import io
+import time  # Importar time para simular a atualização
 
 # Configurar a página
 st.set_page_config(
@@ -668,8 +669,18 @@ def criar_tabela_margem_percentual(df):
         st.error(f"Erro ao criar tabela de margem percentual: {e}")
         return None
 
+# Função para carregar dados com barra de progresso
+def carregar_dados_com_progresso():
+    with st.spinner("Atualizando a base de dados..."):
+        # Simular um tempo de carregamento (substitua isso pela sua lógica de carregamento)
+        time.sleep(2)  # Simula um atraso de 2 segundos
+        
+        # Aqui você deve chamar a função real para carregar os dados
+        df = carregar_dados()  # Chame sua função de carregamento de dados
+        return df
+
 # Carregar dados uma única vez
-df = carregar_dados()
+df = carregar_dados_com_progresso()
 
 # Renomear colunas para minúsculas
 df.columns = df.columns.str.lower()
@@ -757,6 +768,13 @@ if df is not None:
         clientes_disponiveis
     )
     
+    # Filtro de UF do Cliente
+    ufs_disponiveis = ['Todos'] + sorted([str(x) for x in df['ufcliente'].unique() if pd.notna(x)])
+    uf_selecionada = st.sidebar.selectbox(
+        'Selecione a UF do Cliente:',
+        ufs_disponiveis,
+        index=0  # Opção padrão (primeira UF selecionada)
+    )
     
     # Aplicar filtros
     df_filtrado = df.copy()
@@ -783,6 +801,10 @@ if df is not None:
     # Aplicar filtro de Gerente de Venda
     if gerente_venda_selecionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['gerentevenda'].astype(str) == gerente_venda_selecionado]
+    
+    # Aplicar filtro de UF do Cliente
+    if uf_selecionada  != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['ufcliente'].astype(str) == uf_selecionada]
     
     # Mostrar contagem de registros após filtros
     st.sidebar.markdown("---")
