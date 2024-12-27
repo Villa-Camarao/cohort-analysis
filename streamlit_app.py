@@ -19,6 +19,7 @@ st.set_page_config(
     layout="wide"  # Ativar o Wide Mode
 )
 
+
 # Definir imagem de fundo
 st.markdown(
     """
@@ -677,13 +678,14 @@ def carregar_dados_com_progresso():
         
         # Aqui você deve chamar a função real para carregar os dados
         df = carregar_dados()  # Chame sua função de carregamento de dados
+        st.session_state.df = df  # Armazena o DataFrame no session_state
         return df
 
 # Carregar dados uma única vez
 df = carregar_dados_com_progresso()
 
 # Renomear colunas para minúsculas
-df.columns = df.columns.str.lower()
+# df.columns = df.columns.str.lower()
 
 # Verificar as colunas do DataFrame
 #st.write("Colunas disponíveis no DataFrame:", df.columns.tolist())
@@ -806,6 +808,18 @@ if df is not None:
     if uf_selecionada  != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['ufcliente'].astype(str) == uf_selecionada]
     
+    # Adicionar selectbox para escolher entre amostra e dados completos
+    opcao_dados = st.sidebar.selectbox(
+        "Escolha o tipo de dados:",
+        ["Amostra", "Dados Completos"],
+        index=1  # Amostra como padrão
+    )
+
+    # Se a opção for "Amostra", usar uma amostra dos dados
+    if opcao_dados == "Amostra":
+        if len(df_filtrado) > 10000:  # Exemplo de limite
+            df_filtrado = df_filtrado.sample(n=10000, random_state=1)
+
     # Mostrar contagem de registros após filtros
     st.sidebar.markdown("---")
     st.sidebar.write("### Resumo dos Dados")
@@ -833,7 +847,7 @@ modo_coorte = st.sidebar.radio(
 )
 
 # Navegação entre páginas
-pagina = st.sidebar.selectbox("Escolha uma página:", ["Página Inicial", "Gráfico de retenção", "Análise Coorte"])
+pagina = st.sidebar.selectbox("Escolha uma página:", ["Página Inicial", "Gráfico de retenção", "Análise Coorte", "Análise Exploratória"])
 
 if pagina == "Página Inicial":
     st.write("## Visualização dos Dados")
@@ -1012,4 +1026,169 @@ elif pagina == "Análise Coorte":
                 - Os valores representam a quantidade total de vendas
                 - A coluna 'Total Geral' mostra a quantidade total por safra
                 """)
+
+elif pagina == "Análise Exploratória":
+    # Exibir as primeiras linhas do DataFrame
+    st.subheader("Visualização dos Dados")
+    st.dataframe(df_filtrado.head())
+
+    # Análise Exploratória
+    st.subheader("Análise Exploratória")
+
+    # Exibir informações do DataFrame
+    st.write("Informações do DataFrame:")
+    st.write(df_filtrado.info())
+
+    # Exibir estatísticas descritivas
+    st.write("Estatísticas Descritivas:")
+    st.write(df_filtrado.describe())
+
+    # Gráfico de distribuição de uma coluna (exemplo: 'faturamento')
+    if 'faturamento' in df_filtrado.columns:
+        st.subheader("Distribuição do Faturamento")
+        plt.figure(figsize=(12, 6))
+        sns.histplot(df_filtrado['faturamento'], bins=30, kde=True)
+        st.pyplot(plt) 
+
+    st.write("## Bem-vindo à Página de Análise Exploratória!")
+    #import analise_preditiva  # Importa a nova página
+    # Faturamento total
+    faturamento_total = df_filtrado['faturamento'].sum()
+    st.write(f"**Faturamento Total:** R$ {faturamento_total:,.2f}")
+
+    # Faturamento médio mensal
+    faturamento_mensal = df_filtrado.groupby(df_filtrado['datamovimento'].dt.to_period('M'))['faturamento'].sum()
+    faturamento_medio_mensal = faturamento_mensal.mean()
+    st.write(f"**Faturamento Médio Mensal:** R$ {faturamento_medio_mensal:,.2f}")
+
+    # Faturamento médio por cliente
+    faturamento_medio_por_cliente = faturamento_total / df_filtrado['codigocliente'].nunique()
+    st.write(f"**Faturamento Médio por Cliente:** R$ {faturamento_medio_por_cliente:,.2f}")
+
+    # Faturamento médio por nota fiscal
+    faturamento_medio_por_nota = faturamento_total / df_filtrado['notasaida'].nunique()
+    st.write(f"**Faturamento Médio por Nota Fiscal:** R$ {faturamento_medio_por_nota:,.2f}")
+
+    # Faturamento médio por nome_cluster
+    faturamento_por_nome_cluster = df_filtrado.groupby('nome_cluster')['faturamento'].sum()
+    faturamento_medio_por_nome_cluster = faturamento_por_nome_cluster.mean()
+    st.write(f"**Faturamento Médio por Cluster:** R$ {faturamento_medio_por_nome_cluster:,.2f}")
+
+    # Margem por nome_cluster
+    df_filtrado.loc[:, 'margem'] = df_filtrado['faturamento'] - df_filtrado['custo']  # Calcular a margem usando .loc
+    margem_por_nome_cluster = df_filtrado.groupby('nome_cluster')['margem'].mean()
+    st.write("**Margem por Cluster:**")
+    st.dataframe(margem_por_nome_cluster)
+
+    # EDA
+
+    # Tipos de dados
+    st.write("## Análise Exploratória de Dados")
+    st.subheader("Tipos de Dados das Colunas")
+    st.write(df_filtrado.dtypes)
+
+    # Existem valores ausentes ou nulos? Quais colunas são mais afetadas?
+    st.subheader("Existem valores ausentes ou nulos?")
+    valores_ausentes = df_filtrado.isna().sum()
+    st.dataframe(valores_ausentes)
+
+    # Identificar as colunas mais afetadas por valores ausentes ou nulos
+    colunas_afetadas = valores_ausentes[valores_ausentes > 0].sort_values(ascending=False)
+    st.subheader("Colunas Mais Afetadas por Valores Ausentes ou Nulos")
+    st.dataframe(colunas_afetadas)
+
+    # Compreensão das variáveis
+    # Qual é a variável alvo?
+    st.subheader("Definição da Variável Alvo")
+    variavel_alvo = st.selectbox("Selecione a Variável Alvo:", ["faturamento", "margem", "quantidade"])
+    st.write(f"Variável Alvo Selecionada: {variavel_alvo}")
+
+    # Quais variáveis são categóricas e quais são numéricas?
+
+    # definir manualmente as variáveis que são numéricas mas que são, na verdade, categóricas.
+    df_filtrado['codigocliente'] = df_filtrado['codigocliente'].astype(str)
+    df_filtrado['codigofilial'] = df_filtrado['codigofilial'].astype(str)
+    df_filtrado['notasaida'] = df_filtrado['notasaida'].astype(str)
+
+    # Identificar as variáveis categóricas e numéricas, excluindo a variável alvo
+    variaveis_categoricas = df_filtrado.select_dtypes(include=['object']).columns.difference(['variavel_alvo'])
+    variaveis_numericas = df_filtrado.select_dtypes(include=['int64', 'float64']).columns.difference(['variavel_alvo'])
+
+    st.subheader("Variáveis Categóricas")
+    st.write("As seguintes variáveis são categóricas:")
+    st.write(variaveis_categoricas)
+
+    st.subheader("Variáveis Numéricas")
+    st.write("As seguintes variáveis são numéricas:")
+    st.write(variaveis_numericas)
+
+    # Distribuição e Estatisticas básicas
+    st.subheader("Distribuição da Variável Alvo")
+
+    # Garantir que a variável alvo seja numérica
+    df_filtrado[variavel_alvo] = pd.to_numeric(df_filtrado[variavel_alvo], errors='coerce')
+
+    plt.figure(figsize=(10, 6))
+    sns.histplot(df_filtrado[variavel_alvo].dropna(), kde=True, color='blue')  # Remover NaN para o histograma
+    plt.title(f"Distribuição da Variável Alvo: {variavel_alvo}")
+    plt.xlabel(variavel_alvo)
+    plt.ylabel("Frequência")
+    st.pyplot(plt)
+
+    # Existem valores extremos ou outliwes em variáveis numéricas?
+    st.subheader("Existem valores extremos ou outliers em variáveis numéricas?")
+
+    # Identificar valores extremos ou outliers em variáveis numéricas
+    valores_extremos = df_filtrado[variaveis_numericas].apply(lambda x: x[(np.abs(x-x.mean())>=(3*x.std()))], axis=1)
+
+    # Mostrar as variáveis com valores extremos ou outliers
+    st.dataframe(valores_extremos)
+
+    # Identificar quais variáveis têm mais valores extremos ou outliers
+    contagem_valores_extremos = valores_extremos.sum().sort_values(ascending=False)
+    st.subheader("Variáveis com Mais Valores Extremos ou Outliers")
+    st.dataframe(contagem_valores_extremos)
+
+    # Como as variáveis categóricas estão distribuídas?
+    st.subheader("Distribuição das Variáveis Categóricas")
+
+    # Criar um gráfico de barras para cada variável categórica
+    # Vamos filtrar apenas algumas variáveis para verificar a distribuição delas
+    variaveis_selecionadas = ['nome_cluster', 'ufcliente', 'gerentecarteira']
+    for variavel in variaveis_selecionadas:
+        plt.figure(figsize=(10, 6))
+        sns.countplot(x=variavel, data=df_filtrado)
+        plt.title(f"Distribuição de {variavel}")
+        plt.xlabel(variavel)
+        plt.ylabel("Frequência")
+        st.pyplot(plt)
+    
+    
+    # Relacionamento e Padrões
+    # Correlação
+
+    # Existe correlação entre as variáveis numéricas e a variável-alvo?
+    st.subheader("Existe correlação entre as variáveis numéricas e a variável-alvo?")
+
+    # st.write("Colunas disponíveis no DataFrame:", df_filtrado.columns.tolist())
+
+    # Verificar se as variáveis numéricas e a variável alvo estão presentes no DataFrame
+    variaveis_a_verificar = variaveis_numericas #+ [variavel_alvo]
+    variaveis_presentes = [var for var in variaveis_a_verificar if var in df_filtrado.columns]
+
+    if len(variaveis_presentes) == len(variaveis_a_verificar):
+        # Calcular a matriz de correlação
+        matriz_correlacao = df_filtrado[variaveis_presentes].corr()
+        # Mostrar a matriz de correlação
+        st.dataframe(matriz_correlacao)
+    else:
+        st.warning("Algumas variáveis não estão presentes no DataFrame. Verifique os nomes das colunas.")
+    
+    st.markdown("""
+    **Correlação:**
+    
+    - Valor 1: Indica uma correlação positiva perfeita. Isso significa que, à medida que uma variável aumenta, a outra também aumenta de forma proporcional.
+    - Valor -1: Indica uma correlação negativa perfeita. Isso significa que, à medida que uma variável aumenta, a outra diminui de forma proporcional.
+    - Valor 0: Indica que não há correlação linear entre as variáveis. Isso significa que as mudanças em uma variável não estão relacionadas às mudanças na outra.
+    """)
 
