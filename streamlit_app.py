@@ -1192,3 +1192,37 @@ elif pagina == "Análise Exploratória":
     - Valor 0: Indica que não há correlação linear entre as variáveis. Isso significa que as mudanças em uma variável não estão relacionadas às mudanças na outra.
     """)
 
+
+
+    st.title("Fase de Pré-processamento")
+    st.subheader("Preparação dos Dados para Análise")
+
+    # Rafa comentou sobre não comparar mês a mês anos anteriores a 2023 com 2025 e considerar somente o crescimento anual
+    # Ao contrário de 2024
+
+
+
+    # Tratamento de dados ausentes na coluna 'rede'
+    df_filtrado['rede'].fillna('sem rede', inplace=True)
+
+    # Tratamento de dados ausentes nas colunas 'custo' e 'margem'
+    df_filtrado['custo'].fillna(method='bfill', inplace=True)
+    df_filtrado['margem'].fillna(method='bfill', inplace=True)
+
+    
+    # Excluir registros com 'rede' igual a VILLA ou TOQUE DE PEIXE
+    st.warning("Excluindo rede Villa e Toque de Peixe")
+    df_processado = df_filtrado.copy()
+    df_processado = df_processado[df_processado['rede'].isin(['VILLA', 'TOQUE DE PEIXE']) == False]
+
+
+    st.subheader("Tratamento de Outliers")
+
+    # Aplicar escalas logarítmicas às variáveis numéricas
+    for var in variaveis_numericas:
+        df_processado[var] = df_processado[var].apply(lambda x: np.log(x) if x > 0 else x)
+
+    st.success("Escalas logarítmicas aplicadas às variáveis numéricas com sucesso.")
+
+    # Mostrar o DataFrame após o tratamento de outliers
+    st.dataframe(df_processado.head())
