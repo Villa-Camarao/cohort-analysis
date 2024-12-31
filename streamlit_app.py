@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import boto3
 import io
 import time  # Importar time para simular a atualização
+import re
 
 # Configurar a página
 st.set_page_config(
@@ -1165,7 +1166,7 @@ elif pagina == "Análise Exploratória":
     
     
     # Relacionamento e Padrões
-    # Correlação
+    # Correção
 
     # Existe correlação entre as variáveis numéricas e a variável-alvo?
     st.subheader("Existe correlação entre as variáveis numéricas e a variável-alvo?")
@@ -1215,14 +1216,190 @@ elif pagina == "Análise Exploratória":
     df_processado = df_filtrado.copy()
     df_processado = df_processado[df_processado['rede'].isin(['VILLA', 'TOQUE DE PEIXE']) == False]
 
+    # Calcular o preço médio unitário vendido
+    if df_processado is not None:
+        df_processado['preco_medio_unitario'] = df_processado['faturamento'] / df_processado['quantidade']
+        
 
     st.subheader("Tratamento de Outliers")
 
+
+    # Vamos criar uma coluna cod_gerente_carteira apenas com o numeral encontrado à direta da dos valores da variável 
+    df_processado['cod_gerente_carteira'] = df_processado['gerentecarteira'].apply(lambda x: re.search(r'\d+', x).group() if re.search(r'\d+', x) else None)
+    # Fazer o mesmo para nome_cluster
+    df_processado['cod_nome_cluster'] = df_processado['nome_cluster'].apply(lambda x: re.search(r'\d+', x).group() if re.search(r'\d+', x) else None)
+    # Fazer o mesmo para supervisor_carteira
+    df_processado['cod_supervisor_carteira'] = df_processado['supervisorcarteira'].apply(lambda x: re.search(r'\d+', x).group() if re.search(r'\d+', x) else None)
+
+
+    # Tratar as variáveis cod_gerente_carteira, cod_nome_cluster e cod_supervisor_carteira como categóricas
+    df_processado['cod_gerente_carteira'] = df_processado['cod_gerente_carteira'].astype(str)
+    df_processado['cod_nome_cluster'] = df_processado['cod_nome_cluster'].astype(str)
+    df_processado['cod_supervisor_carteira'] = df_processado['cod_supervisor_carteira'].astype(str)
+
+
+    colunas_a_remover = ['cliente', 'nome_cluster', 'rede', 'gerentevenda', 'supervisorvenda', 'consultorvenda', 'gerentecarteira', 'supervisorcarteira', 'consultorcarteira', 'ufcliente', 'codigocliente', 'codigofilial', 'notasaida']
+    for coluna in colunas_a_remover:
+        if coluna in df_processado.columns:
+            df_processado.drop(columns=[coluna], inplace=True)
+
+
+    # Identificar as variáveis categóricas e numéricas, excluindo a variável alvo
+    variaveis_categoricas_p = df_processado.select_dtypes(include=['object']).columns.difference([variavel_alvo])
+    variaveis_numericas_p = df_processado.select_dtypes(include=['int64', 'float64']).columns.difference([variavel_alvo])
+
+
     # Aplicar escalas logarítmicas às variáveis numéricas
-    for var in variaveis_numericas:
+    for var in variaveis_numericas_p:
         df_processado[var] = df_processado[var].apply(lambda x: np.log(x) if x > 0 else x)
 
     st.success("Escalas logarítmicas aplicadas às variáveis numéricas com sucesso.")
 
     # Mostrar o DataFrame após o tratamento de outliers
     st.dataframe(df_processado.head())
+
+# Adicionar variáveis temporais
+if df_processado is not None:
+    # Converter DATAMOVIMENTO para datetime se ainda não estiver
+    df_processado['datamovimento'] = pd.to_datetime(df_processado['datamovimento'])
+    
+    # Criar novas variáveis temporais
+    df_processado['dia_da_semana'] = df_processado['datamovimento'].dt.weekday  # Dia da semana
+    df_processado['mes'] = df_processado['datamovimento'].dt.month  # Mês
+    df_processado['sazonalidade'] = df_processado['datamovimento'].dt.month % 12 // 3 + 1  # Sazonalidade (1: Primavera, 2: Verão, 3: Outono, 4: Inverno)
+
+
+    # Mostrar o DataFrame após a criação de variáveis temporais
+    st.success("Criação de variáveis temporais com sucesso.")
+    st.dataframe(df_processado.head())
+
+
+    st.title("Fase de Modelagem e Treinamento do Modelo")
+    st.subheader("Divisão dos dados")
+
+    from sklearn.model_selection import train_test_split
+
+    # Divisão dos dados em treino, validação e teste
+    X = df_processado.drop(columns=[variavel_alvo])
+    y = df_processado[variavel_alvo]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.143, random_state=42)
+
+    st.success("Divisão dos dados em treino, validação e teste com sucesso.")
+    st.write("Índices de treino:", X_train.index)
+    st.write("Índices de validação:", X_val.index)
+    st.write("Índices de teste:", X_test.index)
+
+
+
+    st.subheader("Escolha do Modelo")
+
+if pagina == "Análise Exploratória":
+    # Definir modelos disponíveis
+    modelos_disponiveis = [
+        'Regressão Linear', 
+        'Árvore de Decisão', 
+        'Random Forest', 
+        'Gradient Boosting', 
+        'XGBoost',
+        'Prophet'
+    ]
+
+    # Adicionar selectbox na sidebar para escolha do modelo
+    modelo_selecionado = st.sidebar.selectbox(
+        "Escolha o Modelo de Machine Learning", 
+        modelos_disponiveis
+    )
+
+
+# Exibir o modelo selecionado
+st.write(f"Modelo selecionado: {modelo_selecionado}")
+
+
+if modelo_selecionado == 'Prophet':
+    # Preparando dados para o Prophet
+    df_prophet = df_processado[['datamovimento', variavel_alvo]].copy()
+    df_prophet.columns = ['ds', 'y']  # Renomeando colunas conforme requerido pelo Prophet
+    df_prophet['ds'] = pd.to_datetime(df_prophet['ds'])
+
+    # Inicializando e treinando o modelo Prophet
+    from prophet import Prophet
+
+    modelo_prophet = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        yearly_seasonality=True,
+        changepoint_prior_scale=0.05  # Ajuste para flexibilidade na tendência
+    )
+
+    # Ajustando o modelo
+    modelo_prophet.fit(df_prophet)
+
+    # Criando período futuro para previsão
+    futuro = modelo_prophet.make_future_dataframe(periods=30)  # Previsão para próximos 30 dias
+    previsao = modelo_prophet.predict(futuro)
+
+    # Visualizando resultados
+    st.subheader("Previsão com Prophet")
+    fig_prophet = modelo_prophet.plot(previsao)
+    st.pyplot(fig_prophet)
+
+    # Componentes da previsão
+    fig_componentes = modelo_prophet.plot_components(previsao)
+    st.pyplot(fig_componentes)
+
+
+if modelo_selecionado == 'Regressão Linear':
+    # Preparando dados para Regressão Linear
+    from sklearn.model_selection import train_test_split
+    from sklearn.linear_model import LinearRegression
+    from sklearn.metrics import mean_squared_error, r2_score
+    import numpy as np
+
+    # Selecionar features para o modelo
+    features = st.multiselect(
+        "Selecione as Features para o Modelo de Regressão Linear", 
+        list(df_processado.select_dtypes(include=['int64', 'float64']).columns)
+    )
+
+    # Preparar dados de treino e teste
+    X = df_processado[features]
+    y = df_processado[variavel_alvo]
+
+    # Dividir dados em treino e teste
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Treinar modelo de Regressão Linear
+    modelo_linear = LinearRegression()
+    modelo_linear.fit(X_train, y_train)
+
+    # Fazer previsões
+    previsoes = modelo_linear.predict(X_test)
+
+    # Avaliar modelo
+    mse = mean_squared_error(y_test, previsoes)
+    r2 = r2_score(y_test, previsoes)
+
+    # Visualizar resultados
+    st.subheader("Resultados da Regressão Linear")
+    
+    # Gráfico de valores reais vs previstos
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_test, previsoes, color='blue', alpha=0.7)
+    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
+    plt.title("Valores Reais vs Previstos")
+    plt.xlabel("Valores Reais")
+    plt.ylabel("Valores Previstos")
+    st.pyplot(plt)
+
+    # Métricas de desempenho
+    st.write(f"**Erro Quadrático Médio (MSE):** {mse:.2f}")
+    st.write(f"**Coeficiente de Determinação (R²):** {r2:.2f}")
+
+    # Coeficientes do modelo
+    coeficientes = pd.DataFrame({
+        'Feature': features,
+        'Coeficiente': modelo_linear.coef_
+    })
+    st.subheader("Coeficientes do Modelo")
+    st.dataframe(coeficientes)
