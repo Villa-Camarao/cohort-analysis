@@ -10,4 +10,4 @@ st-files-connection
 boto3
 prophet
 xgboost
-sklearn
+scikit-learn
