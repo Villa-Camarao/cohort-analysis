@@ -9,3 +9,4 @@ s3fs
 st-files-connection
 boto3
 prophet
+xgboost
