@@ -40,38 +40,6 @@ st.markdown(
 
 # Função para carregar dados
 @st.cache_data(ttl=timedelta(hours=12))
-"""
-def carregar_dados():
-    try:
-        # Criar cliente S3 usando as credenciais do arquivo .streamlit/secrets.toml
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=st.secrets["aws"]["aws_access_key_id"],
-            aws_secret_access_key=st.secrets["aws"]["aws_secret_access_key"],
-            region_name=st.secrets["aws"]["aws_default_region"]
-        )
-        
-        # Definir bucket e arquivo
-        bucket = 'datalake-out-etl'
-        file_key = 'base-cohort-analysis/base-cohort-analysis.csv'
-        
-        # Baixar arquivo do S3
-        obj = s3_client.get_object(Bucket=bucket, Key=file_key)
-        
-        # Ler CSV para DataFrame
-        df = pd.read_csv(io.BytesIO(obj['Body'].read()))
-        
-        # Validar se o DataFrame foi carregado corretamente
-        if df is None or df.empty:
-            raise Exception("Nenhum dado foi carregado do arquivo CSV")
-            
-        return df
-        
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
-        return None
-"""
-
 def carregar_dados():
     try:
         # Tenta obter credenciais das variáveis de ambiente (padrão para Railway)
