@@ -1,2 +1,2 @@
 [start]
-cmd = "streamlit_app.py --server.address 0.0.0.0 --server.port 8080 --client.showErrorDetails false --server.fileWatcherType none --browser.gatherUsageStats false --client.toolbarMode minimal"
+cmd = "streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8080 --client.showErrorDetails false --server.fileWatcherType none --browser.gatherUsageStats false --client.toolbarMode minimal"
