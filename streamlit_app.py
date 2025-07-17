@@ -40,6 +40,7 @@ st.markdown(
 
 # Função para carregar dados
 @st.cache_data(ttl=timedelta(hours=12))
+"""
 def carregar_dados():
     try:
         # Criar cliente S3 usando as credenciais do arquivo .streamlit/secrets.toml
@@ -67,6 +68,50 @@ def carregar_dados():
         return df
         
     except Exception as e:
+        st.error(f"Erro ao carregar dados: {e}")
+        return None
+"""
+
+def carregar_dados():
+    try:
+        # Tenta obter credenciais das variáveis de ambiente (padrão para Railway)
+        aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
+        aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+        region_name = os.environ.get("AWS_DEFAULT_REGION")
+
+        # Se não encontrar, tenta obter do st.secrets (padrão para Streamlit Cloud)
+        if not all([aws_access_key_id, aws_secret_access_key, region_name]):
+            aws_access_key_id = st.secrets["aws"]["aws_access_key_id"]
+            aws_secret_access_key = st.secrets["aws"]["aws_secret_access_key"]
+            region_name = st.secrets["aws"]["aws_default_region"]
+
+        # Criar cliente S3 com as credenciais encontradas
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=region_name
+        )
+        
+        # Definir bucket e arquivo
+        bucket = 'datalake-out-etl'
+        file_key = 'base-cohort-analysis/base-cohort-analysis.csv'
+        
+        # Baixar arquivo do S3
+        obj = s3_client.get_object(Bucket=bucket, Key=file_key)
+        
+        # Ler CSV para DataFrame
+        df = pd.read_csv(io.BytesIO(obj['Body'].read()))
+        
+        # Validar se o DataFrame foi carregado corretamente
+        if df is None or df.empty:
+            raise Exception("Nenhum dado foi carregado do arquivo CSV")
+            
+        return df
+        
+    except Exception as e:
+        # Para depuração, é útil saber qual tipo de erro aconteceu
+        # O erro original era provavelmente um 'KeyError' ao tentar acessar st.secrets
         st.error(f"Erro ao carregar dados: {e}")
         return None
 
