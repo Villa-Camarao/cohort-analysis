@@ -745,7 +745,7 @@ else:
             "client_id": os.environ.get("MS_CLIENT_ID"),
             "client_secret": os.environ.get("MS_CLIENT_SECRET"),
             "redirect_uri": "https://cohort-analysis-production.up.railway.app/_st_login", # IMPORTANTE: Usar a URL de produção aqui
-            "tenant_id": "31c3f538-6aad-4e9e-88c9-be621816b96c", # Ou o ID do seu tenant específico para maior segurança
+            "tenant_id": "common", # Ou o ID do seu tenant específico para maior segurança
             "label": "Login com Microsoft (Villa Camarão)"
         }
     }
@@ -756,7 +756,7 @@ else:
     if login_button.is_logged_in:
         # Pega o email do usuário logado
         user_email = login_button.user.email
-        allowed_domain = "@villacamarao.com.br"
+        #allowed_domain = "villacamarao.com.br"
         
         st.sidebar.write(f"Logado como: {user_email}")
 
