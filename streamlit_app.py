@@ -40,47 +40,64 @@ st.markdown(
 
 # Função para carregar dados
 @st.cache_data(ttl=timedelta(hours=12))
+def get_aws_credentials():
+    """
+    Obtém as credenciais da AWS de forma segura, priorizando variáveis de ambiente.
+    Retorna um dicionário com as credenciais.
+    """
+    # Prioridade 1: Variáveis de ambiente (Railway, Docker, etc.)
+    if "AWS_ACCESS_KEY_ID" in os.environ:
+        st.info("Carregando credenciais AWS a partir das variáveis de ambiente.")
+        return {
+            "aws_access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
+            "aws_secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
+            "aws_default_region": os.environ["AWS_DEFAULT_REGION"]
+        }
+    
+    # Prioridade 2: st.secrets (Streamlit Cloud)
+    # Verifica se st.secrets existe e se a seção 'aws' está presente
+    elif hasattr(st, 'secrets') and "aws" in st.secrets:
+        st.info("Carregando credenciais AWS a partir do Streamlit Secrets.")
+        return {
+            "aws_access_key_id": st.secrets["aws"]["aws_access_key_id"],
+            "aws_secret_access_key": st.secrets["aws"]["aws_secret_access_key"],
+            "aws_default_region": st.secrets["aws"]["aws_default_region"]
+        }
+    
+    else:
+        # Se nenhuma das opções estiver disponível, levanta um erro claro.
+        raise ValueError("Credenciais da AWS não encontradas. Configure as variáveis de ambiente ou o arquivo secrets.toml.")
+
+# Agora, refatore sua função carregar_dados para usar essa nova função.
 def carregar_dados():
     try:
-        # Tenta obter credenciais das variáveis de ambiente (padrão para Railway)
-        aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID")
-        aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        region_name = os.environ.get("AWS_DEFAULT_REGION")
+        # 1. Obter as credenciais de forma segura
+        aws_creds = get_aws_credentials()
 
-        # Se não encontrar, tenta obter do st.secrets (padrão para Streamlit Cloud)
-        if not all([aws_access_key_id, aws_secret_access_key, region_name]):
-            aws_access_key_id = st.secrets["aws"]["aws_access_key_id"]
-            aws_secret_access_key = st.secrets["aws"]["aws_secret_access_key"]
-            region_name = st.secrets["aws"]["aws_default_region"]
-
-        # Criar cliente S3 com as credenciais encontradas
+        # 2. Criar o cliente S3 usando as credenciais desempacotadas
         s3_client = boto3.client(
             's3',
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            region_name=region_name
+            aws_access_key_id=aws_creds["aws_access_key_id"],
+            aws_secret_access_key=aws_creds["aws_secret_access_key"],
+            region_name=aws_creds["aws_default_region"]
+            # Alternativa mais limpa: boto3.client('s3', **aws_creds)
         )
         
-        # Definir bucket e arquivo
+        # 3. O resto da sua lógica permanece igual
         bucket = 'datalake-out-etl'
         file_key = 'base-cohort-analysis/base-cohort-analysis.csv'
         
-        # Baixar arquivo do S3
         obj = s3_client.get_object(Bucket=bucket, Key=file_key)
-        
-        # Ler CSV para DataFrame
         df = pd.read_csv(io.BytesIO(obj['Body'].read()))
         
-        # Validar se o DataFrame foi carregado corretamente
         if df is None or df.empty:
             raise Exception("Nenhum dado foi carregado do arquivo CSV")
             
         return df
         
     except Exception as e:
-        # Para depuração, é útil saber qual tipo de erro aconteceu
-        # O erro original era provavelmente um 'KeyError' ao tentar acessar st.secrets
         st.error(f"Erro ao carregar dados: {e}")
+        # A mensagem de erro agora será muito mais específica (ex: do ValueError ou do boto3)
         return None
 
 # Função para criar análise de coorte (mantém igual)
