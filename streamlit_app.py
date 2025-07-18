@@ -735,6 +735,59 @@ if df is not None:
 st.title("Análise Coorte e Retenção")
 st.subheader("Villa Camarão!")
 
+# Verifica se as credenciais da Microsoft estão nas variáveis de ambiente
+if "MS_CLIENT_ID" not in os.environ or "MS_CLIENT_SECRET" not in os.environ:
+    st.error("As credenciais de autenticação da Microsoft não foram configuradas. Contate o administrador.")
+else:
+    # Configura o provedor de autenticação
+    auth_providers = {
+        "microsoft": {
+            "client_id": os.environ.get("MS_CLIENT_ID"),
+            "client_secret": os.environ.get("MS_CLIENT_SECRET"),
+            "redirect_uri": "https://cohort-analysis-production.up.railway.app/_st_login", # IMPORTANTE: Usar a URL de produção aqui
+            "tenant_id": "31c3f538-6aad-4e9e-88c9-be621816b96c", # Ou o ID do seu tenant específico para maior segurança
+            "label": "Login com Microsoft (Villa Camarão)"
+        }
+    }
+
+    # Exibe o botão de login
+    login_button = st.login(auth_providers=auth_providers)
+
+    if login_button.is_logged_in:
+        # Pega o email do usuário logado
+        user_email = login_button.user.email
+        allowed_domain = "@villacamarao.com.br"
+        
+        st.sidebar.write(f"Logado como: {user_email}")
+
+        # Verifica se o domínio do email é o permitido
+        if user_email.endswith(allowed_domain):
+            # --- SE O ACESSO FOR PERMITIDO, MOSTRA O APP ---
+            st.header("Dashboard Principal")
+            
+            # Carrega e exibe os dados
+            df_cohort = carregar_dados()
+
+            if df_cohort is not None:
+                st.success("Dados carregados com sucesso!")
+                st.dataframe(df_cohort)
+                # ... coloque aqui o resto do seu aplicativo, gráficos, etc.
+            else:
+                st.warning("Não foi possível carregar os dados do dashboard.")
+
+        else:
+            # --- SE O DOMÍNIO NÃO FOR PERMITIDO ---
+            st.error(f"Acesso Negado. Apenas usuários com o domínio '{allowed_domain}' são permitidos.")
+            st.warning(f"Seu email ({user_email}) não tem permissão para acessar esta aplicação.")
+            st.info("Por favor, faça logout e tente novamente com uma conta autorizada.")
+            # O botão de logout já é exibido automaticamente por st.login
+
+    else:
+        st.info("Por favor, faça login para acessar o dashboard.")
+        st.image("https://www.villacamarao.com.br/wp-content/uploads/2023/12/logo-villa-camarao.png", width=300)
+
+# Fim do treche de autenticação
+
 # Adicionar logo
 st.image("https://villacamarao.com.br/wp-content/uploads/2021/05/Prancheta1_3.svg", width=150)
 
