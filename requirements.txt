@@ -12,3 +12,4 @@ prophet
 xgboost
 scikit-learn
 plotly
+Authlib
