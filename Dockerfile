@@ -19,4 +19,4 @@ EXPOSE 8501
 
 # O comando para rodar sua aplicação quando o contêiner iniciar.
 # O --server.address=0.0.0.0 é CRUCIAL para que o app seja acessível de fora do contêiner.
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
