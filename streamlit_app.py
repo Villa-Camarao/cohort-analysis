@@ -751,7 +751,7 @@ else:
     }
 
     # Exibe o botão de login
-    login_button = st.login(providers="microsoft")
+    login_button = st.login("microsoft")
 
     if login_button.is_logged_in:
         # Pega o email do usuário logado
