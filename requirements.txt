@@ -1,4 +1,4 @@
-streamlit>=1.33.0
+streamlit>=1.47.0
 cx_Oracle
 pandas
 numpy
